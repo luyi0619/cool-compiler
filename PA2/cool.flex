@@ -60,8 +60,8 @@ int comment_level;
 %x		                                COOL_STRING_ESCAPE
 %x		                                COOL_STRING_NULL
 %x		                                COOL_STRING_LONG
-DARROW		                            =>
-ASSIGN		                            <-
+DARROW		                                =>
+ASSIGN		                                <-
 LE		                                <=
 
 %%
