@@ -54,15 +54,15 @@ int comment_level;
  * Define names for regular expressions here.
  */
 
-%x		COOL_SINGLECOMMENT
-%x		COOL_COMMENT
-%x		COOL_STRING
-%x		COOL_STRING_ESCAPE
-%x		COOL_STRING_NULL
-%x		COOL_STRING_LONG
-DARROW		=>
-ASSIGN		<-
-LE		<=
+%x		                                COOL_SINGLECOMMENT
+%x		                                COOL_COMMENT
+%x		                                COOL_STRING
+%x		                                COOL_STRING_ESCAPE
+%x		                                COOL_STRING_NULL
+%x		                                COOL_STRING_LONG
+DARROW		                            =>
+ASSIGN		                            <-
+LE		                                <=
 
 %%
 
@@ -75,26 +75,26 @@ LE		<=
   *  The multiple-character operators.
   */
 
-\n			{ curr_lineno++; }
+\n			                        { curr_lineno++; }
 [ \t\f\r\t\v]+
 
 
-{DARROW}		{ return (DARROW); }
-{ASSIGN}		{ return (ASSIGN); }
-{LE}			{ return (LE); }
+{DARROW}		                        { return (DARROW); }
+{ASSIGN}		                        { return (ASSIGN); }
+{LE}			                        { return (LE); }
 
-"--"            		{ BEGIN(COOL_SINGLECOMMENT); }
-<COOL_SINGLECOMMENT>\n  	{ BEGIN(INITIAL); curr_lineno++; }
+"--"            		                { BEGIN(COOL_SINGLECOMMENT); }
+<COOL_SINGLECOMMENT>\n  	                { BEGIN(INITIAL); curr_lineno++; }
 <COOL_SINGLECOMMENT>.	
 
-"(*"            	{ BEGIN(COOL_COMMENT); comment_level = 1; }
-<COOL_COMMENT>"(*"    	{ comment_level++; }
-<COOL_COMMENT>\n    	{ curr_lineno++; }
-<COOL_COMMENT><<EOF>>	{ BEGIN(INITIAL); cool_yylval.error_msg = "EOF in comment"; return ERROR; }
+"(*"            	                        { BEGIN(COOL_COMMENT); comment_level = 1; }
+<COOL_COMMENT>"(*"    	                        { comment_level++; }
+<COOL_COMMENT>\n    	                        { curr_lineno++; }
+<COOL_COMMENT><<EOF>>	                        { BEGIN(INITIAL); cool_yylval.error_msg = "EOF in comment"; return ERROR; }
 <COOL_COMMENT>.	
-<COOL_COMMENT>"*)"	{ comment_level --; if (comment_level == 0) BEGIN(INITIAL); }
+<COOL_COMMENT>"*)"	                        { comment_level --; if (comment_level == 0) BEGIN(INITIAL); }
 
-"*)"			{ cool_yylval.error_msg = "Unmatched *)"; return ERROR; }
+"*)"			                        { cool_yylval.error_msg = "Unmatched *)"; return ERROR; }
 
  /*
   * Keywords are case-insensitive except for the values true and false,
@@ -103,25 +103,25 @@ LE		<=
 
 
 
-(?i:class)		{ return CLASS; }
-(?i:else)		{ return ELSE; }
-(?i:fi)			{ return FI; }
-(?i:if)			{ return IF; }
-(?i:in)			{ return IN; }
-(?i:inherits)		{ return INHERITS; }
-(?i:isvoid)		{ return ISVOID; }
-(?i:let)		{ return LET; }
-(?i:loop)		{ return LOOP; }
-(?i:pool)		{ return POOL; }
-(?i:then)		{ return THEN; }
-(?i:while)		{ return WHILE; }
-(?i:case)		{ return CASE; }
-(?i:esac)		{ return ESAC; }
-(?i:new)		{ return NEW; }
-(?i:of)			{ return OF; }
-(?i:not)		{ return NOT; }
-t(?i:rue)		{ cool_yylval.boolean = true;  return BOOL_CONST; }
-f(?i:alse)		{ cool_yylval.boolean = false; return BOOL_CONST; }
+(?i:class)		                        { return CLASS; }
+(?i:else)		                        { return ELSE; }
+(?i:fi)			                        { return FI; }
+(?i:if)			                        { return IF; }
+(?i:in)			                        { return IN; }
+(?i:inherits)		                        { return INHERITS; }
+(?i:isvoid)		                        { return ISVOID; }
+(?i:let)		                        { return LET; }
+(?i:loop)		                        { return LOOP; }
+(?i:pool)		                        { return POOL; }
+(?i:then)		                        { return THEN; }
+(?i:while)		                        { return WHILE; }
+(?i:case)		                        { return CASE; }
+(?i:esac)		                        { return ESAC; }
+(?i:new)		                        { return NEW; }
+(?i:of)			                        { return OF; }
+(?i:not)		                        { return NOT; }
+t(?i:rue)		                        { cool_yylval.boolean = true;  return BOOL_CONST; }
+f(?i:alse)		                        { cool_yylval.boolean = false; return BOOL_CONST; }
 
  /*
   *  String constants (C syntax)
@@ -130,31 +130,31 @@ f(?i:alse)		{ cool_yylval.boolean = false; return BOOL_CONST; }
   *
   */
 
-\"            			{ BEGIN(COOL_STRING); string_buf_ptr = string_buf;}
-<COOL_STRING>\"    		{ BEGIN(INITIAL); cool_yylval.symbol = stringtable.add_string(string_buf, string_buf_ptr - string_buf); return STR_CONST; }
-<COOL_STRING><<EOF>>		{ BEGIN(INITIAL); cool_yylval.error_msg = "EOF in string constant"; return ERROR; }
-<COOL_STRING>\n    		{ BEGIN(INITIAL); cool_yylval.error_msg = "Unterminated string constant"; curr_lineno++; return ERROR; }
-<COOL_STRING>\0		    	{ BEGIN(COOL_STRING_NULL); cool_yylval.error_msg = "String contains null character"; return ERROR; }
-<COOL_STRING>\\0	    	{ append_str('0');}
-<COOL_STRING>\\n	    	{ append_str('\n');}
-<COOL_STRING>\\t	    	{ append_str('\t');}
-<COOL_STRING>\\b	    	{ append_str('\b');}
-<COOL_STRING>\\f	    	{ append_str('\f');}
-<COOL_STRING>\\    		{ BEGIN(COOL_STRING_ESCAPE); }
-<COOL_STRING>.		    	{ append_str(yytext[0]);}
+\"            			                { BEGIN(COOL_STRING); string_buf_ptr = string_buf;}
+<COOL_STRING>\"    		                { BEGIN(INITIAL); cool_yylval.symbol = stringtable.add_string(string_buf, string_buf_ptr - string_buf); return STR_CONST; }
+<COOL_STRING><<EOF>>		                { BEGIN(INITIAL); cool_yylval.error_msg = "EOF in string constant"; return ERROR; }
+<COOL_STRING>\n    		                { BEGIN(INITIAL); cool_yylval.error_msg = "Unterminated string constant"; curr_lineno++; return ERROR; }
+<COOL_STRING>\0		    	                { BEGIN(COOL_STRING_NULL); cool_yylval.error_msg = "String contains null character"; return ERROR; }
+<COOL_STRING>\\0	    	                { append_str('0');}
+<COOL_STRING>\\n	    	                { append_str('\n');}
+<COOL_STRING>\\t	    	                { append_str('\t');}
+<COOL_STRING>\\b	    	                { append_str('\b');}
+<COOL_STRING>\\f	    	                { append_str('\f');}
+<COOL_STRING>\\    		                { BEGIN(COOL_STRING_ESCAPE); }
+<COOL_STRING>.		    	                { append_str(yytext[0]);}
 
-<COOL_STRING_ESCAPE><<EOF>>	{ BEGIN(INITIAL); cool_yylval.error_msg = "EOF in string constant"; return ERROR; }
-<COOL_STRING_ESCAPE>\0	    	{ BEGIN(COOL_STRING_NULL); cool_yylval.error_msg = "String contains null character"; return ERROR; }
-<COOL_STRING_ESCAPE>\n	    	{ BEGIN(COOL_STRING); append_str('\n'); curr_lineno++; }
-<COOL_STRING_ESCAPE>.    	{ BEGIN(COOL_STRING); append_str(yytext[0]);}
+<COOL_STRING_ESCAPE><<EOF>>	                { BEGIN(INITIAL); cool_yylval.error_msg = "EOF in string constant"; return ERROR; }
+<COOL_STRING_ESCAPE>\0	    	                { BEGIN(COOL_STRING_NULL); cool_yylval.error_msg = "String contains null character"; return ERROR; }
+<COOL_STRING_ESCAPE>\n	    	                { BEGIN(COOL_STRING); append_str('\n'); curr_lineno++; }
+<COOL_STRING_ESCAPE>.    	                { BEGIN(COOL_STRING); append_str(yytext[0]);}
 
 
-<COOL_STRING_NULL>\"		{ BEGIN(INITIAL); }
-<COOL_STRING_NULL>\n		{ BEGIN(INITIAL); curr_lineno++; }
+<COOL_STRING_NULL>\"		                { BEGIN(INITIAL); }
+<COOL_STRING_NULL>\n		                { BEGIN(INITIAL); curr_lineno++; }
 <COOL_STRING_NULL>.		
 
-<COOL_STRING_LONG>\"		{ BEGIN(INITIAL); }
-<COOL_STRING_LONG>\n		{ BEGIN(INITIAL); curr_lineno++; }
+<COOL_STRING_LONG>\"		                { BEGIN(INITIAL); }
+<COOL_STRING_LONG>\n		                { BEGIN(INITIAL); curr_lineno++; }
 <COOL_STRING_LONG>.		
 
 
