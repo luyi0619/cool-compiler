@@ -171,7 +171,6 @@
     | class_list class	/* several classes */
     { $$ = append_Classes($1,single_Classes($2)); parse_results = $$; }
     | error ';'
-    { omerrs ++; }
     ;
     
     /* If no parent is specified, the class inherits from the Object class. */
@@ -188,7 +187,6 @@
     | feature_list feature
     { $$ = append_Features($1,single_Features($2));}
     | error ';'
-    { omerrs ++; }
     ;
     
     feature	: OBJECTID ':' TYPEID ';'
@@ -222,17 +220,18 @@
     ;
 
 
-    expression_list	:		/* empty */
-    { $$ = nil_Expressions(); }
+    expression_list	: expression ';'
+    { $$ = single_Expressions($1); }
     | expression_list expression ';'
     { $$ = append_Expressions($1,single_Expressions($2));}
     | expression_list error ';'
     | expression_list error
+    | error
     ;
 
     dispatch_list	: 
     { $$ = nil_Expressions(); }
-    |expression
+    | expression
     { $$ = single_Expressions($1);}
     | dispatch_list ',' expression
     { $$ = append_Expressions($1,single_Expressions($3));}
