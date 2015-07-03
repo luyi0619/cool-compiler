@@ -66,6 +66,8 @@ std::map<Symbol, int> objectsize;
 std::map<Symbol, std::map<Symbol, std::pair<Symbol, int> > > class_attr_typeoffset;
 std::map<Symbol, std::map<Symbol, int> > class_method_offset;
 
+std::map<Symbol, int> class_max_child;
+
 SymbolTable<char*, int>* identifiers;
 
 //
@@ -985,8 +987,9 @@ void CgenClassTable::code_methods()
 
 		/* end class_init */
 
-		if (classtag[s] < 5)
-			continue; // built-in class
+		/* do not care about built-in methods */
+		if (s == Object || s == IO || s == Str)
+			continue;
 
 		// implement methods
 		for (int i = features->first(); features->more(i); i = features->next(i)) {
@@ -1257,25 +1260,36 @@ void CgenNode::set_parentnd(CgenNodeP p)
 	parentnd = p;
 }
 
+int CgenClassTable::code_label_class(CgenNode* curnode, int& label)
+{
+	Symbol s = curnode->get_name();
+	classtag[s] = label++;
+	int max_child = classtag[s];
+
+	for (List<CgenNode>* l = curnode->get_children(); l; l = l->tl()) {
+		max_child = std::max(max_child, code_label_class(l->hd(), label));
+	}
+	class_max_child[s] = max_child;
+	return max_child;
+}
+
 void CgenClassTable::code_preprocessing()
 {
-	/* initialize class tag */
-	classtag[Object] = 0;
-	classtag[IO] = 1;
-	classtag[Int] = intclasstag;
-	classtag[Bool] = boolclasstag;
-	classtag[Str] = stringclasstag;
-
-	int tag = 5;
 	for (List<CgenNode>* l = nds; l; l = l->tl()) {
 		CgenNode* node = l->hd();
 		Symbol s = node->get_name();
-		if (classtag.count(s))
-			continue; // skip basic classes
-		classtag[s] = tag++;
+		if (s == Object) {
+			int label = 0;
+			code_label_class(node, label);
+			break;
+		}
 	}
 
-	/* initialize object size */
+	intclasstag = classtag[Int];
+	boolclasstag = classtag[Bool];
+	stringclasstag = classtag[Str];
+
+	// initialize object size
 
 	for (List<CgenNode>* l = nds; l; l = l->tl()) {
 		CgenNode* node = l->hd();
@@ -1289,6 +1303,7 @@ void CgenClassTable::code_preprocessing()
 
 void CgenClassTable::code()
 {
+	code_preprocessing();
 
 	if (cgen_debug)
 		cout << "coding global data" << endl;
@@ -1302,7 +1317,6 @@ void CgenClassTable::code()
 		cout << "coding constants" << endl;
 	code_constants();
 
-	code_preprocessing();
 	code_nametab();
 	code_objTab();
 	code_dispatch();
@@ -1389,7 +1403,6 @@ void assign_class::code(ostream& s)
 
 void static_dispatch_class::code(ostream& s)
 {
-
 	s << "# ----> in static_dispatch_class " << endl;
 	int dispatch_branch = get_nextbranch();
 
@@ -1482,9 +1495,6 @@ void dispatch_class::code(ostream& s)
 	//output dispatch_branch
 	emit_label_def(dispatch_branch, s);
 
-	// load dispatch table, set function offset, jump to it.
-	//emit_load(T1, 2, SELF, s);
-
 	int offset = 0;
 	if (expr->get_type() == SELF_TYPE) {
 		emit_move(ACC, SELF, s);
@@ -1551,48 +1561,92 @@ void loop_class::code(ostream& s)
 void typcase_class::code(ostream& s)
 {
 	s << "# ----> in typcase_class " << endl;
-	s << "# the following implementation picks up the first one which exactly matches with expr, which is not correct for now! " << endl;
 	int unmatched_branch = get_nextbranch();
+	int try_exec = get_nextbranch();
 	int void_branch = get_nextbranch();
 	int end_branch = get_nextbranch();
-	std::vector<int> cases_branch;
+	std::vector<int> cases_branch_test;
+	std::vector<int> cases_branch_exec;
 	for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
-		cases_branch.push_back(get_nextbranch());
+		cases_branch_test.push_back(get_nextbranch());
+		cases_branch_exec.push_back(get_nextbranch());
 	}
+	cases_branch_test.push_back(try_exec); // a hack
+
 	expr->code(s);
 	int of = next_offset();
 	emit_store(ACC, of, FP, s);
 	// jump to void
 	emit_beqz(ACC, void_branch, s);
 
+	emit_load_imm(T5, -1, s);
+	emit_partial_load_address(T6, s);
+	emit_label_ref(unmatched_branch, s);
+	s << endl;
+
 	int cases_len = cases->len();
 	for (int i = cases->first(), j = 0; cases->more(i); i = cases->next(i), j++) {
 		//output case label;
-		emit_label_def(cases_branch[j], s);
+		emit_label_def(cases_branch_test[j], s);
 
 		identifiers->enterscope();
 		branch_class* branch = (branch_class*)cases->nth(i);
 		s << "# put " << branch->name->get_string() << " at " << of << endl;
 		identifiers->addid(branch->name->get_string(), new int(of));
 
-		emit_load(T1, 0, ACC, s); // get expr class tag
 		int case_class_tag = classtag[branch->type_decl];
-		emit_load_imm(T2, case_class_tag, s); // set case class tag
+		int case_max_child = class_max_child[branch->type_decl];
+		emit_load(T1, 0, ACC, s); // get expr class tag
 
-		if (j == cases_len - 1) // last case
-		{
-			emit_bne(T1, T2, unmatched_branch, s);
+		// handle exact match first
+
+		emit_load_imm(T2, case_class_tag, s);
+		emit_beq(T1, T2, cases_branch_exec[j], s);
+
+		// case class tag should less than the expr tag, which means we jump to next case if expr class tag < case class tag
+
+		emit_blti(T1, case_class_tag, cases_branch_test[j + 1], s);
+
+		// case max child should larger than or equal to the expr tag, which means we jump to next case if expr class tag > case max child
+
+		emit_bgti(T1, case_max_child, cases_branch_test[j + 1], s);
+
+		// now we reach a potential matched case.  we compare the case_class_tag with the tag on the stack
+
+		// we jump away if the tag on the stack is larger
+
+		emit_bgti(T5, case_class_tag, cases_branch_test[j + 1], s);
+
+		// now let's update the value on the stack and update the address.
+
+		emit_load_imm(T5, case_class_tag, s);
+
+		if (j == cases_len - 1) {
+			// the last one is the best
+			emit_branch(cases_branch_exec[j], s);
 		}
 		else {
-			emit_bne(T1, T2, cases_branch[j + 1], s);
+			emit_partial_load_address(T6, s);
+			emit_label_ref(cases_branch_exec[j], s);
+			s << endl;
+
+			emit_branch(cases_branch_test[j + 1], s);
 		}
-		// if match, then eval
+
+		//output case label;
+		emit_label_def(cases_branch_exec[j], s);
 		s << "# match case " << j << endl;
+		//emit_addiu(SP, SP, 8, s);
 		branch->expr->code(s);
 		// go to end
 		emit_branch(end_branch, s);
 		identifiers->exitscope();
 	}
+
+	// output try_exec label;
+
+	emit_label_def(try_exec, s);
+	emit_jalr(T6, s);
 
 	//output void label;
 	emit_label_def(void_branch, s);
@@ -1606,6 +1660,7 @@ void typcase_class::code(ostream& s)
 	//output unmatch label;
 	emit_label_def(unmatched_branch, s);
 	emit_move(ACC, SELF, s);
+	//emit_addiu(SP, SP, 8, s);
 	emit_jal("_case_abort", s);
 
 	//output end label;
@@ -1862,18 +1917,7 @@ void bool_const_class::code(ostream& s)
 
 void new__class::code(ostream& s)
 {
-
 	s << "# ----> in new__class " << endl;
-
-	/*
-	emit_partial_load_address(ACC, s);
-
-	if (type_name == SELF_TYPE)
-	emit_protobj_ref(selfclass, s);
-	else
-	emit_protobj_ref(type_name, s);
-	s << endl;
-	*/
 
 	if (type_name == SELF_TYPE) {
 		emit_partial_load_address(ACC, s);
@@ -1917,17 +1961,6 @@ void new__class::code(ostream& s)
 		s << endl;
 	}
 
-	/*
-	s << JAL;
-
-	if (type_name == SELF_TYPE)
-	emit_init_ref(selfclass, s);
-	else
-	emit_init_ref(type_name, s);
-
-	s << endl;
-	*/
-
 	emit_load(ACC, 1, SP, s);
 	emit_addiu(SP, SP, 4, s);
 
@@ -1960,7 +1993,6 @@ void no_expr_class::code(ostream& s)
 
 void object_class::code(ostream& s)
 {
-
 	s << "# ----> in object_class " << endl;
 
 	if (name == self) {

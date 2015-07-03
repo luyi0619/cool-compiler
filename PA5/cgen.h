@@ -28,6 +28,7 @@ private:
 	int boolclasstag;
 	// The following methods emit code for
 	// constants and global declarations.
+	int code_label_class(CgenNode*, int &);
 	void code_preprocessing();
 	void code_global_data();
 	void code_global_text();
