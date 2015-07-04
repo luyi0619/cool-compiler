@@ -80,7 +80,7 @@ public:
 	tree_node *copy()		 { return copy_Expression(); }
 	virtual Expression copy_Expression() = 0;
 	virtual bool no_expr(){ return false; }
-
+	virtual int get_local_temp_variable_num() { return 0; }
 #ifdef Expression_EXTRAS
 	Expression_EXTRAS
 #endif
@@ -190,7 +190,6 @@ public:
 	}
 	Symbol get_name() { return name; }
 	int type(){ return 0; } // 0 method 1 attr
-	
 	Feature copy_Feature();
 	void dump(ostream& stream, int n);
 
@@ -291,7 +290,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -318,7 +317,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -343,7 +342,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -368,7 +367,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -391,7 +390,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -414,7 +413,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -435,7 +434,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -462,7 +461,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -485,7 +484,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -508,7 +507,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -531,7 +530,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -554,7 +553,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -575,7 +574,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -598,7 +597,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -621,7 +620,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -644,7 +643,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -665,7 +664,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -749,7 +748,6 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif
@@ -770,7 +768,7 @@ public:
 	
 	Expression copy_Expression();
 	void dump(ostream& stream, int n);
-
+	int get_local_temp_variable_num();
 #ifdef Expression_SHARED_EXTRAS
 	Expression_SHARED_EXTRAS
 #endif

@@ -1,4 +1,3 @@
-
 //**************************************************************
 //
 // Code generator SKELETON
@@ -35,23 +34,6 @@ extern int cgen_debug;
 Symbol cur_filename;
 
 int label = 0;
-int variable_offset;
-int cur_offset()
-{
-	return variable_offset;
-}
-void set_offset(int of)
-{
-	variable_offset = of;
-}
-int next_offset()
-{
-	return variable_offset--;
-}
-void clear_variable_offset()
-{
-	variable_offset = 0;
-}
 
 int get_nextbranch()
 {
@@ -60,15 +42,89 @@ int get_nextbranch()
 
 Symbol selfclass = 0;
 
-std::map<Symbol, int> classtag;
-std::map<Symbol, int> objectsize;
-
+std::map<Symbol, int> classtag, objectsize, class_max_child;
 std::map<Symbol, std::map<Symbol, std::pair<Symbol, int> > > class_attr_typeoffset;
 std::map<Symbol, std::map<Symbol, int> > class_method_offset;
 
-std::map<Symbol, int> class_max_child;
-
 SymbolTable<char*, int>* identifiers;
+
+int typcase_class::get_local_temp_variable_num()
+{
+	int size = std::max(expr->get_local_temp_variable_num(), 1);
+	int max_branch_size = 0;
+	for (int i = cases->first(), j = 0; cases->more(i); i = cases->next(i), j++) {
+		branch_class* branch = (branch_class*)cases->nth(i);
+		max_branch_size = std::max(max_branch_size, branch->expr->get_local_temp_variable_num());
+	}
+	return size + max_branch_size;
+}
+
+int block_class::get_local_temp_variable_num()
+{
+	int size = 0;
+	for (int i = body->first(); body->more(i); i = body->next(i)) {
+		Expression e = body->nth(i);
+		size = std::max(size, e->get_local_temp_variable_num());
+	}
+	return size;
+}
+
+int let_class::get_local_temp_variable_num()
+{
+	return std::max(1,init->get_local_temp_variable_num()) + body->get_local_temp_variable_num() ;
+}
+
+#define __GENERATE_E1_EXP(x)					\
+	int x::get_local_temp_variable_num()		\
+{												\
+	return e1->get_local_temp_variable_num();	\
+}
+
+__GENERATE_E1_EXP(isvoid_class)
+__GENERATE_E1_EXP(comp_class)
+__GENERATE_E1_EXP(neg_class)
+
+
+#define __GENERATE_E1E2MAX_EXP(x)															\
+	int x::get_local_temp_variable_num()													\
+{																							\
+	return std::max(e1->get_local_temp_variable_num(), e2->get_local_temp_variable_num());	\
+}
+
+__GENERATE_E1E2MAX_EXP(leq_class)
+__GENERATE_E1E2MAX_EXP(eq_class)
+__GENERATE_E1E2MAX_EXP(lt_class)
+__GENERATE_E1E2MAX_EXP(divide_class)
+__GENERATE_E1E2MAX_EXP(mul_class)
+__GENERATE_E1E2MAX_EXP(sub_class)
+__GENERATE_E1E2MAX_EXP(plus_class)
+
+
+int loop_class::get_local_temp_variable_num()
+{
+	return std::max(pred->get_local_temp_variable_num(), body->get_local_temp_variable_num());
+}
+
+int cond_class::get_local_temp_variable_num()
+{
+	int size = 0;
+	size = std::max(size, pred->get_local_temp_variable_num());
+	size = std::max(size, then_exp->get_local_temp_variable_num());
+	size = std::max(size, else_exp->get_local_temp_variable_num());
+	return size;
+}
+
+#define __GENERATE_EXPR_EXP(x)					\
+	int x::get_local_temp_variable_num()		\
+{												\
+	return expr->get_local_temp_variable_num();	\
+}
+
+__GENERATE_EXPR_EXP(dispatch_class)
+__GENERATE_EXPR_EXP(static_dispatch_class)
+__GENERATE_EXPR_EXP(assign_class)
+
+
 
 //
 // Three symbols from the semantic analyzer (semant.cc) are used.
@@ -759,8 +815,6 @@ void CgenClassTable::code_prototype_helper(CgenNode* curnode, int& attr_offset)
 			else {
 				str << WORD << 0 << endl;
 			}
-
-			//cout << s << " " << attr->get_name() << " " << attr->type_decl << " " << attr_offset << endl;
 		}
 	}
 }
@@ -812,7 +866,6 @@ void CgenClassTable::code_nametab()
 
 void CgenClassTable::code_dispatch_helper(CgenNode* curnode, std::list<std::pair<Symbol, Symbol> >& functions)
 {
-
 	if (curnode == 0)
 		return;
 	code_dispatch_helper(curnode->get_parentnd(), functions);
@@ -857,7 +910,6 @@ void CgenClassTable::code_dispatch()
 			str << it->second;
 			str << endl;
 			class_method_offset[selfclass][it->second] = offset++;
-			//str << "# " << it->first << " " << (int)it->first << " ~~~ " << it->second << " " << (int)it->second << "  offset: " << class_method_offset[it->first][it->second] << endl;
 		}
 	}
 }
@@ -947,12 +999,9 @@ void CgenClassTable::code_methods()
 		emit_move(FP, SP, str);
 		emit_move(SELF, ACC, str);
 
-		str << "# ---  defaul - init starts. " << endl;
-
 		default_init(node);
 
 		emit_move(ACC, SELF, str);
-		str << "# ---  defaul - init ends. " << endl;
 
 		if (node->get_parent() != No_class) {
 			str << JAL << node->get_parent() << "_init" << endl;
@@ -969,7 +1018,17 @@ void CgenClassTable::code_methods()
 				if (attr->init->no_expr())
 					continue; // skip basic init ???
 
-				attr->init->code(str);
+				int variable_length = WORD_SIZE * attr->init->get_local_temp_variable_num(); /*add temp variables length*/
+				if (variable_length)
+				{
+					emit_addiu(SP, SP, -variable_length, str);
+					attr->init->code(str, 0);
+					emit_addiu(SP, SP, variable_length, str);
+				}
+				else
+				{
+					attr->init->code(str, 0);
+				}
 				int offset = class_attr_typeoffset[s][f->get_name()].second;
 				emit_store(ACC, offset, SELF, str);
 			}
@@ -1018,18 +1077,19 @@ void CgenClassTable::code_methods()
 				emit_move(SELF, ACC, str);
 
 				//temp variables
-				int variable_length = 100; /*add temp variables length*/
-				emit_addiu(SP, SP, -variable_length, str);
-
+				int variable_length = WORD_SIZE * med->expr->get_local_temp_variable_num(); /*add temp variables length*/
+				
+				if (variable_length)
+				{
+					emit_addiu(SP, SP, -variable_length, str);
+				}
 				//store RA
 
 				emit_store(RA, 0, SP, str);
 
 				emit_addiu(SP, SP, -4, str);
 
-				str << "# ----------------------- med->expr->code(str) follows" << endl;
-
-				med->expr->code(str);
+				med->expr->code(str, 0);
 				emit_load(RA, 1, SP, str);
 				int z = 4 + med->formals->len() * 4 + variable_length; // return address, parameters, variables
 				emit_addiu(SP, SP, z, str);
@@ -1368,11 +1428,9 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct)
 //
 //*****************************************************************
 
-void assign_class::code(ostream& s)
+void assign_class::code(ostream& s, int offset)
 {
 	/* attrs or variables */
-	s << "# ----> in assign_class " << endl;
-
 	int* p = identifiers->lookup(name->get_string());
 
 	if (p == NULL) // attrs
@@ -1381,12 +1439,7 @@ void assign_class::code(ostream& s)
 		int of = class_attr_typeoffset[selfclass][name].second;
 		emit_store(SELF, 0, SP, s);
 		emit_addiu(SP, SP, -4, s);
-		expr->code(s);
-		/*
-		emit_load(T1, 1, SP, s);
-		emit_store(ACC, of, T1, s);
-		emit_addiu(SP, SP, 4, s);
-		*/
+		expr->code(s, offset);
 
 		emit_load(SELF, 1, SP, s);
 		emit_store(ACC, of, SELF, s);
@@ -1394,16 +1447,13 @@ void assign_class::code(ostream& s)
 	}
 	else {
 		int of = *p;
-		expr->code(s);
-		s << "# -------- ofset " << of << endl;
+		expr->code(s, offset);
 		emit_store(ACC, of, FP, s);
 	}
-	s << "# ----> out assign_class " << endl;
 }
 
-void static_dispatch_class::code(ostream& s)
+void static_dispatch_class::code(ostream& s, int offset)
 {
-	s << "# ----> in static_dispatch_class " << endl;
 	int dispatch_branch = get_nextbranch();
 
 	//store FP and SELF
@@ -1417,16 +1467,11 @@ void static_dispatch_class::code(ostream& s)
 
 	for (int i = actual->first(), of = actual->len(); actual->more(i); i = actual->next(i), of--) {
 		Expression e = actual->nth(i);
-		e->code(s);
-		s << "# output parameter for " << name << endl;
+		e->code(s, 0);
 		emit_store(ACC, of, SP, s);
 	}
 
-	int old_offset = cur_offset();
-
-	clear_variable_offset(); /*old fp + self + # of actuals*/
-
-	expr->code(s);
+	expr->code(s, offset);
 
 	// if acc is void, call _dispatch_abort
 	emit_bne(ACC, ZERO, dispatch_branch, s);
@@ -1437,7 +1482,7 @@ void static_dispatch_class::code(ostream& s)
 	emit_load_imm(T1, get_line_number(), s);
 	emit_jal("_dispatch_abort", s);
 
-	int offset = class_method_offset[type_name][name];
+	int var_offset = class_method_offset[type_name][name];
 
 	//output dispatch_branch
 	emit_label_def(dispatch_branch, s);
@@ -1447,19 +1492,14 @@ void static_dispatch_class::code(ostream& s)
 	s << endl;
 	//emit_load(T1, 2, ACC, s);
 
-	emit_load(T1, offset, T1, s);
+	emit_load(T1, var_offset, T1, s);
 
 	emit_jalr(T1, s);
 	emit_addiu(SP, SP, 8, s);
-	// restore offset
-	set_offset(old_offset);
-	s << "# ----> out static_dispatch_class " << endl;
 }
 
-void dispatch_class::code(ostream& s)
+void dispatch_class::code(ostream& s, int offset)
 {
-	s << "# ----> in dispatch_class " << endl;
-
 	int dispatch_branch = get_nextbranch();
 
 	//store FP and SELF
@@ -1473,15 +1513,11 @@ void dispatch_class::code(ostream& s)
 
 	for (int i = actual->first(), of = actual->len(); actual->more(i); i = actual->next(i), of--) {
 		Expression e = actual->nth(i);
-		e->code(s);
-		s << "# output parameter for " << name << endl;
+		e->code(s, 0);
 		emit_store(ACC, of, SP, s);
 	}
-	int old_offset = cur_offset();
 
-	clear_variable_offset(); /*old fp + self + # of actuals*/
-
-	expr->code(s);
+	expr->code(s, offset);
 
 	// if acc is void, call _dispatch_abort
 	emit_bne(ACC, ZERO, dispatch_branch, s);
@@ -1495,72 +1531,61 @@ void dispatch_class::code(ostream& s)
 	//output dispatch_branch
 	emit_label_def(dispatch_branch, s);
 
-	int offset = 0;
+	int var_offset = 0;
 	if (expr->get_type() == SELF_TYPE) {
 		emit_move(ACC, SELF, s);
-		offset = class_method_offset[selfclass][name];
+		var_offset = class_method_offset[selfclass][name];
 	}
 	else {
-		offset = class_method_offset[expr->get_type()][name];
+		var_offset = class_method_offset[expr->get_type()][name];
 	}
 
 	// load dispatch table, set function offset, jump to it.
 	emit_load(T1, 2, ACC, s);
-
-	s << "# expr->get_type() = " << expr->get_type() << " " << selfclass << " " << (int)selfclass << " name = " << name << " " << (int)name << " offset = " << offset << endl;
-
-	emit_load(T1, offset, T1, s);
+	emit_load(T1, var_offset, T1, s);
 
 	emit_jalr(T1, s);
 	emit_addiu(SP, SP, 8, s);
-	// restore offset
-	set_offset(old_offset);
-	s << "# ----> out dispatch_class " << endl;
 }
 
-void cond_class::code(ostream& s)
+void cond_class::code(ostream& s, int offset)
 {
-	s << "# ----> in cond_class " << endl;
 	int true_branch = get_nextbranch();
 	int false_branch = get_nextbranch();
 	int endif_branch = get_nextbranch();
-	pred->code(s);
+	pred->code(s, offset);
 	emit_load(ACC, 3, ACC, s);
 	emit_bne(ACC, ZERO, true_branch, s);
 	//output false_branch label;
 	emit_label_def(false_branch, s);
-	else_exp->code(s);
+	else_exp->code(s, offset);
 	emit_branch(endif_branch, s);
 	//output true_branch label;
 	emit_label_def(true_branch, s);
-	then_exp->code(s);
+	then_exp->code(s, offset);
 	//output endif label;
 	emit_label_def(endif_branch, s);
-	s << "# ----> out cond_class " << endl;
 }
 
-void loop_class::code(ostream& s)
+void loop_class::code(ostream& s, int offset)
 {
-	s << "# ----> in loop_class " << endl;
 	int while_branch = get_nextbranch();
 	int end_branch = get_nextbranch();
 	//output while_branch label;
 	emit_label_def(while_branch, s);
-	pred->code(s);
+	pred->code(s, offset);
 	emit_load(ACC, 3, ACC, s);
 	emit_beqz(ACC, end_branch, s); // false
-	body->code(s);
+	body->code(s, offset);
 	emit_branch(while_branch, s);
 	//output end label;
 	emit_label_def(end_branch, s);
 	// set void
 	emit_move(ACC, ZERO, s);
-	s << "# ----> out loop_class " << endl;
 }
 
-void typcase_class::code(ostream& s)
+void typcase_class::code(ostream& s, int offset)
 {
-	s << "# ----> in typcase_class " << endl;
 	int unmatched_branch = get_nextbranch();
 	int try_exec = get_nextbranch();
 	int void_branch = get_nextbranch();
@@ -1573,9 +1598,8 @@ void typcase_class::code(ostream& s)
 	}
 	cases_branch_test.push_back(try_exec); // a hack
 
-	expr->code(s);
-	int of = next_offset();
-	emit_store(ACC, of, FP, s);
+	expr->code(s, offset);
+	emit_store(ACC, offset, FP, s);
 	// jump to void
 	emit_beqz(ACC, void_branch, s);
 
@@ -1591,8 +1615,7 @@ void typcase_class::code(ostream& s)
 
 		identifiers->enterscope();
 		branch_class* branch = (branch_class*)cases->nth(i);
-		s << "# put " << branch->name->get_string() << " at " << of << endl;
-		identifiers->addid(branch->name->get_string(), new int(of));
+		identifiers->addid(branch->name->get_string(), new int(offset));
 
 		int case_class_tag = classtag[branch->type_decl];
 		int case_max_child = class_max_child[branch->type_decl];
@@ -1635,9 +1658,7 @@ void typcase_class::code(ostream& s)
 
 		//output case label;
 		emit_label_def(cases_branch_exec[j], s);
-		s << "# match case " << j << endl;
-		//emit_addiu(SP, SP, 8, s);
-		branch->expr->code(s);
+		branch->expr->code(s, offset - 1); /// - 1
 		// go to end
 		emit_branch(end_branch, s);
 		identifiers->exitscope();
@@ -1660,32 +1681,25 @@ void typcase_class::code(ostream& s)
 	//output unmatch label;
 	emit_label_def(unmatched_branch, s);
 	emit_move(ACC, SELF, s);
-	//emit_addiu(SP, SP, 8, s);
 	emit_jal("_case_abort", s);
 
 	//output end label;
 	emit_label_def(end_branch, s);
-	s << "# ----> out typcase_class " << endl;
 }
 
-void block_class::code(ostream& s)
+void block_class::code(ostream& s, int offset)
 {
-	s << "# ----> in block_class " << endl;
 	for (int i = body->first(); body->more(i); i = body->next(i)) {
 		Expression e = body->nth(i);
-		e->code(s);
+		e->code(s, offset);
 	}
-	s << "# ----> out block_class " << endl;
 }
 
-void let_class::code(ostream& s)
+void let_class::code(ostream& s, int offset)
 {
-	s << "# ----> in let_class " << endl;
 	identifiers->enterscope();
-	init->code(s);
-	int of = next_offset();
-	identifiers->addid(identifier->get_string(), new int(of));
-	s << "# put " << identifier << " at " << of << endl;
+	init->code(s, offset);
+	identifiers->addid(identifier->get_string(), new int(offset));
 	// handle default init
 	if (init->no_expr()) {
 		if (type_decl == Int) {
@@ -1708,19 +1722,17 @@ void let_class::code(ostream& s)
 			emit_move(ACC, ZERO, s);
 		}
 	}
-	emit_store(ACC, of, FP, s);
-	body->code(s);
+	emit_store(ACC, offset, FP, s);
+	body->code(s, offset - 1); // - 1
 	identifiers->exitscope();
-	s << "# ----> out let_class " << endl;
 }
 
-void plus_class::code(ostream& s)
+void plus_class::code(ostream& s, int offset)
 {
-	s << "# ----> in plus_class " << endl;
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
 	emit_load(ACC, 2, SP, s);
@@ -1731,16 +1743,14 @@ void plus_class::code(ostream& s)
 	emit_add(T1, T1, T2, s);
 	emit_store(T1, 3, ACC, s);
 	emit_addiu(SP, SP, 8, s);
-	s << "# ----> out plus_class " << endl;
 }
 
-void sub_class::code(ostream& s)
+void sub_class::code(ostream& s, int offset)
 {
-	s << "# ----> in sub_class " << endl;
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
 	emit_load(ACC, 2, SP, s);
@@ -1751,16 +1761,14 @@ void sub_class::code(ostream& s)
 	emit_sub(T1, T1, T2, s);
 	emit_store(T1, 3, ACC, s);
 	emit_addiu(SP, SP, 8, s);
-	s << "# ----> out sub_class " << endl;
 }
 
-void mul_class::code(ostream& s)
+void mul_class::code(ostream& s, int offset)
 {
-	s << "# ----> in mul_class " << endl;
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
 	emit_load(ACC, 2, SP, s);
@@ -1771,16 +1779,14 @@ void mul_class::code(ostream& s)
 	emit_mul(T1, T1, T2, s);
 	emit_store(T1, 3, ACC, s);
 	emit_addiu(SP, SP, 8, s);
-	s << "# ----> out mul_class " << endl;
 }
 
-void divide_class::code(ostream& s)
+void divide_class::code(ostream& s, int offset)
 {
-	s << "# ----> in divide_class " << endl;
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
 	emit_load(ACC, 2, SP, s);
@@ -1791,30 +1797,26 @@ void divide_class::code(ostream& s)
 	emit_div(T1, T1, T2, s);
 	emit_store(T1, 3, ACC, s);
 	emit_addiu(SP, SP, 8, s);
-	s << "# ----> out divide_class " << endl;
 }
 
-void neg_class::code(ostream& s)
+void neg_class::code(ostream& s, int offset)
 {
-	s << "# ----> in neg_class " << endl;
-	e1->code(s);
+	e1->code(s, offset);
 	emit_jal("Object.copy", s);
 	emit_load(T1, 3, ACC, s);
 	emit_neg(T1, T1, s);
 	emit_store(T1, 3, ACC, s);
-	s << "# ----> out neg_class " << endl;
 }
 
-void lt_class::code(ostream& s)
+void lt_class::code(ostream& s, int offset)
 {
-	s << "# ----> in lt_class " << endl;
 	int less_branch = get_nextbranch();
 	int end_branch = get_nextbranch();
 
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 	emit_move(T1, ACC, s);
 	emit_load(T1, 3, T1, s);
 	emit_load(ACC, 1, SP, s);
@@ -1828,19 +1830,16 @@ void lt_class::code(ostream& s)
 	//output ebd_branch label;
 	emit_label_def(end_branch, s);
 	emit_addiu(SP, SP, 4, s);
-	s << "# ----> out lt_class " << endl;
 }
 
-void eq_class::code(ostream& s)
+void eq_class::code(ostream& s, int offset)
 {
-	s << "# ----> in eq_class " << endl;
-
 	int end_branch = get_nextbranch();
 
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 
 	emit_load(T1, 1, SP, s);
 	emit_addiu(SP, SP, 4, s);
@@ -1852,20 +1851,17 @@ void eq_class::code(ostream& s)
 
 	//output end_branch label;
 	emit_label_def(end_branch, s);
-
-	s << "# ----> out eq_class " << endl;
 }
 
-void leq_class::code(ostream& s)
+void leq_class::code(ostream& s, int offset)
 {
-	s << "# ----> in leq_class " << endl;
 	int leq_branch = get_nextbranch();
 	int end_branch = get_nextbranch();
 
-	e1->code(s);
+	e1->code(s, offset);
 	emit_store(ACC, 0, SP, s);
 	emit_addiu(SP, SP, -4, s);
-	e2->code(s);
+	e2->code(s, offset);
 	emit_move(T1, ACC, s);
 	emit_load(T1, 3, T1, s);
 	emit_load(ACC, 1, SP, s);
@@ -1879,25 +1875,21 @@ void leq_class::code(ostream& s)
 	//output ebd_branch label;
 	emit_label_def(end_branch, s);
 	emit_addiu(SP, SP, 4, s);
-	s << "# ----> out leq_class " << endl;
 }
 
-void comp_class::code(ostream& s)
+void comp_class::code(ostream& s, int offset)
 { // not
-	s << "# ----> in comp_class " << endl;
-
 	int end_branch = get_nextbranch();
-	e1->code(s);
+	e1->code(s, offset);
 	emit_load(T1, 3, ACC, s);
 	emit_load_bool(ACC, truebool, s);
 	emit_beqz(T1, end_branch, s);
 	emit_load_bool(ACC, falsebool, s);
 	//output end_branch label;
 	emit_label_def(end_branch, s);
-	s << "# ----> out comp_class " << endl;
 }
 
-void int_const_class::code(ostream& s)
+void int_const_class::code(ostream& s, int offset)
 {
 	//
 	// Need to be sure we have an IntEntry *, not an arbitrary Symbol
@@ -1905,20 +1897,18 @@ void int_const_class::code(ostream& s)
 	emit_load_int(ACC, inttable.lookup_string(token->get_string()), s);
 }
 
-void string_const_class::code(ostream& s)
+void string_const_class::code(ostream& s, int offset)
 {
 	emit_load_string(ACC, stringtable.lookup_string(token->get_string()), s);
 }
 
-void bool_const_class::code(ostream& s)
+void bool_const_class::code(ostream& s, int offset)
 {
 	emit_load_bool(ACC, BoolConst(val), s);
 }
 
-void new__class::code(ostream& s)
+void new__class::code(ostream& s, int offset)
 {
-	s << "# ----> in new__class " << endl;
-
 	if (type_name == SELF_TYPE) {
 		emit_partial_load_address(ACC, s);
 		s << CLASSOBJTAB;
@@ -1960,19 +1950,15 @@ void new__class::code(ostream& s)
 		emit_init_ref(type_name, s);
 		s << endl;
 	}
-
 	emit_load(ACC, 1, SP, s);
 	emit_addiu(SP, SP, 4, s);
-
-	s << "# ----> out new__class " << endl;
 }
 
-void isvoid_class::code(ostream& s)
+void isvoid_class::code(ostream& s, int offset)
 {
-	s << "# ----> in isvoid_class " << endl;
 	int settrue_branch = get_nextbranch();
 	int end_branch = get_nextbranch();
-	e1->code(s);
+	e1->code(s, offset);
 	emit_beqz(ACC, settrue_branch, s); // ACC is zero, which means void, goto set ACC=true branch
 	// now it is not void, set ACC = false;
 	emit_load_bool(ACC, falsebool, s);
@@ -1982,42 +1968,29 @@ void isvoid_class::code(ostream& s)
 	emit_load_bool(ACC, truebool, s);
 	//output end_branch label;
 	emit_label_def(end_branch, s);
-	s << "# ----> out isvoid_class " << endl;
 }
 
-void no_expr_class::code(ostream& s)
+void no_expr_class::code(ostream& s, int offset)
 {
-	s << "# ----> in no_expr_class " << endl;
-	s << "# ----> out no_expr_class " << endl;
 }
 
-void object_class::code(ostream& s)
+void object_class::code(ostream& s, int offset)
 {
-	s << "# ----> in object_class " << endl;
-
 	if (name == self) {
 		/*do nothing for a method? try to set ACC to SELF*/
 		emit_move(ACC, SELF, s);
 		return;
 	}
-
 	/* using a symboltable, load it (the address) to acc*/
-
-	int* offset = identifiers->lookup(name->get_string());
-
+	int* ptr = identifiers->lookup(name->get_string());
 	int of = 0;
-	if (offset == NULL) // attrs
+	if (ptr == NULL) // attrs
 	{
 		of = class_attr_typeoffset[selfclass][name].second;
-		s << "# --- attrs." << endl;
 		emit_load(ACC, of, SELF, s);
 	}
 	else {
-		of = *offset;
-		s << "# --- variables." << endl;
-		s << "# name " << name << " offset " << (*offset) << endl;
+		of = *ptr;
 		emit_load(ACC, of, FP, s);
 	}
-
-	s << "# ----> out object_class " << endl;
 }
